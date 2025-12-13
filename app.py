@@ -7,6 +7,9 @@ from mordred import Calculator, descriptors
 import joblib
 import shap
 import streamlit.components.v1 as components
+import matplotlib.pyplot as plt
+import io
+import base64
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -165,15 +168,15 @@ def load_model(model_path='gbdt_lactation_risk_pipeline.pkl'):
         return None
 
 
-# ============ SHAP Force Plot Function ============
-def generate_shap_force_plot(descriptor_df, pipeline, drug_name="Unknown Drug"):
+# ============ SHAP Force Plot Function (HTML Version) ============
+def generate_shap_force_plot_html(descriptor_df, pipeline, drug_name="Unknown Drug"):
     """
-    Generate SHAP force plot for a single prediction
+    Generate SHAP force plot using HTML rendering
     
     Parameters:
     -----------
     descriptor_df : DataFrame
-        Molecular descriptors
+        Molecular descriptors (original values)
     pipeline : dict
         Model pipeline containing model, scaler, and feature names
     drug_name : str
@@ -190,22 +193,34 @@ def generate_shap_force_plot(descriptor_df, pipeline, drug_name="Unknown Drug"):
         feature_names = pipeline['feature_names']
         
         # Ensure correct feature order
-        descriptor_df = descriptor_df[feature_names]
+        descriptor_df_ordered = descriptor_df[feature_names]
         
         # Standardization
-        descriptor_std = scaler.transform(descriptor_df)
-        descriptor_std_df = pd.DataFrame(descriptor_std, 
-                                         columns=feature_names, 
-                                         index=descriptor_df.index)
+        descriptor_std = scaler.transform(descriptor_df_ordered)
+        descriptor_std_df = pd.DataFrame(
+            descriptor_std, 
+            columns=feature_names, 
+            index=descriptor_df_ordered.index
+        )
         
-        # Create background dataset (use standardized data)
-        # For single prediction, we'll use the sample itself as background
-        background_data = descriptor_std_df
+        # Create background dataset (use standardized data with sampling)
+        # For single prediction, create a small synthetic background
+        background_size = min(100, 50)  # Use 50 synthetic samples
         
-        # Initialize SHAP explainer
+        # Generate background by adding small noise to the current sample
+        np.random.seed(42)
+        background_data = []
+        for _ in range(background_size):
+            noise = np.random.normal(0, 0.1, size=descriptor_std.shape)
+            background_sample = descriptor_std + noise
+            background_data.append(background_sample[0])
+        
+        background_df = pd.DataFrame(background_data, columns=feature_names)
+        
+        # Initialize SHAP explainer with background data
         explainer = shap.TreeExplainer(
             model,
-            data=background_data,
+            data=background_df,
             feature_perturbation="interventional",
             model_output="probability"
         )
@@ -216,7 +231,7 @@ def generate_shap_force_plot(descriptor_df, pipeline, drug_name="Unknown Drug"):
         # Handle SHAP values dimension (binary classification - take positive class)
         if isinstance(shap_values_proba, list):
             if len(shap_values_proba) == 2:
-                shap_values_array = shap_values_proba[1]  # Positive class
+                shap_values_array = shap_values_proba[1]  # Positive class (High Risk)
             else:
                 shap_values_array = np.mean(shap_values_proba, axis=0)
         else:
@@ -233,16 +248,18 @@ def generate_shap_force_plot(descriptor_df, pipeline, drug_name="Unknown Drug"):
         
         # Get SHAP values for the sample
         sample_shap = shap_values_array[0, :]
-        sample_original = descriptor_df.iloc[0, :].values
+        sample_original = descriptor_df_ordered.iloc[0, :].values
         
         # Calculate predicted probability
         pred_proba = model.predict_proba(descriptor_std_df)[0, 1]
         
-        # Round original feature values
+        # Round original feature values to 2 decimal places
         sample_original_rounded = np.round(sample_original, 2)
         
-        # Generate force plot HTML
+        # Initialize SHAP JavaScript
         shap.initjs()
+        
+        # Generate force plot HTML (using original feature values for display)
         force_plot = shap.force_plot(
             base_value=base_value,
             shap_values=sample_shap,
@@ -251,7 +268,7 @@ def generate_shap_force_plot(descriptor_df, pipeline, drug_name="Unknown Drug"):
             matplotlib=False  # Use HTML rendering
         )
         
-        # Convert to HTML
+        # Convert to HTML string
         shap_html = f"<head>{shap.getjs()}</head><body>{force_plot.html()}</body>"
         
         # Prepare analysis details
@@ -263,7 +280,7 @@ def generate_shap_force_plot(descriptor_df, pipeline, drug_name="Unknown Drug"):
             'feature_contributions': []
         }
         
-        # Get top 10 contributing features
+        # Get top 10 contributing features by absolute SHAP value
         shap_abs = np.abs(sample_shap)
         top_10_idx = np.argsort(shap_abs)[-10:][::-1]
         
@@ -278,6 +295,8 @@ def generate_shap_force_plot(descriptor_df, pipeline, drug_name="Unknown Drug"):
         
     except Exception as e:
         st.error(f"❌ Error generating SHAP plot: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
         return None, None
 
 
@@ -477,26 +496,26 @@ def main():
                             st.info("📊 SHAP (SHapley Additive exPlanations) values show how each molecular descriptor contributes to the prediction.")
                             
                             with st.spinner("Generating SHAP analysis..."):
-                                shap_html, analysis_details = generate_shap_force_plot(
+                                shap_html, analysis_details = generate_shap_force_plot_html(
                                     descriptor_df, 
                                     pipeline, 
                                     drug_name
                                 )
                                 
                                 if shap_html is not None and analysis_details is not None:
-                                    # Display SHAP Force Plot
+                                    # Display SHAP information
                                     st.markdown("#### 📊 SHAP Force Plot")
                                     st.markdown(f"""
                                     <div class="shap-container">
                                         <p><strong>Drug:</strong> {drug_name}</p>
                                         <p><strong>Base Value (Population Average):</strong> {analysis_details['base_value']:.4f}</p>
                                         <p><strong>Predicted Probability:</strong> {analysis_details['pred_proba']:.4f}</p>
-                                        <p><em>Red features push the prediction higher (towards high risk), blue features push it lower (towards low risk).</em></p>
+                                        <p><em>Red/pink features push the prediction higher (towards high risk), blue features push it lower (towards low risk).</em></p>
                                     </div>
                                     """, unsafe_allow_html=True)
                                     
                                     # Render SHAP force plot
-                                    components.html(shap_html, height=150, scrolling=True)
+                                    components.html(shap_html, height=200, scrolling=True)
                                     
                                     # Display detailed feature contributions
                                     st.markdown("#### 📋 Top 10 Feature Contributions")
@@ -504,8 +523,11 @@ def main():
                                     contrib_df = pd.DataFrame(analysis_details['feature_contributions'])
                                     contrib_df['SHAP Value'] = contrib_df['shap'].apply(lambda x: f"{x:+.4f}")
                                     contrib_df['Feature Value'] = contrib_df['value'].apply(lambda x: f"{x:.2f}")
-                                    contrib_df = contrib_df[['feature', 'Feature Value', 'SHAP Value']]
-                                    contrib_df.columns = ['Feature Name', 'Feature Value', 'SHAP Contribution']
+                                    contrib_df['Impact'] = contrib_df['shap'].apply(
+                                        lambda x: '🔴 Increases Risk' if x > 0 else '🔵 Decreases Risk'
+                                    )
+                                    contrib_df = contrib_df[['feature', 'Feature Value', 'SHAP Value', 'Impact']]
+                                    contrib_df.columns = ['Feature Name', 'Feature Value', 'SHAP Contribution', 'Impact Direction']
                                     
                                     st.dataframe(contrib_df, use_container_width=True)
                                     
@@ -514,10 +536,10 @@ def main():
                                         st.markdown("""
                                         **Understanding SHAP Force Plot:**
                                         
-                                        - **Base Value**: The average prediction across all samples (population baseline)
+                                        - **Base Value**: The average prediction across all training samples (population baseline)
                                         - **SHAP Value**: The contribution of each feature to push the prediction away from the base value
-                                        - **Positive SHAP** (Red): Pushes prediction towards **High Risk** (Class 1)
-                                        - **Negative SHAP** (Blue): Pushes prediction towards **Low Risk** (Class 0)
+                                        - **Positive SHAP** (🔴 Red/Pink): Pushes prediction towards **High Risk** (Class 1)
+                                        - **Negative SHAP** (🔵 Blue): Pushes prediction towards **Low Risk** (Class 0)
                                         
                                         **Formula:**
 ```
@@ -525,8 +547,13 @@ def main():
 ```
                                         
                                         **Example Interpretation:**
-                                        - If a feature has SHAP = +0.15, it increases the high-risk probability by 15%
-                                        - If a feature has SHAP = -0.10, it decreases the high-risk probability by 10%
+                                        - If a feature has SHAP = +0.15, it increases the high-risk probability by 0.15 (15 percentage points)
+                                        - If a feature has SHAP = -0.10, it decreases the high-risk probability by 0.10 (10 percentage points)
+                                        
+                                        **In the Force Plot:**
+                                        - Features are stacked horizontally
+                                        - Longer bars = stronger impact
+                                        - The final position shows the predicted probability
                                         """)
                                     
                                     # Verification details
