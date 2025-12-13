@@ -30,7 +30,7 @@ st.markdown("""
         margin-bottom: 10px;
     }
     .sub-title {
-        font-size: 20px;
+        font-size: 72px;
         color: #666;
         text-align: center;
         margin-bottom: 30px;
