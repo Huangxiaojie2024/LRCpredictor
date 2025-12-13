@@ -10,4 +10,5 @@ lime
 plotly
 seaborn
 scipy
+mordred
 matplotlib
