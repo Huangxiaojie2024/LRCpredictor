@@ -5,9 +5,11 @@ from rdkit import Chem
 from rdkit.Chem import Descriptors
 from mordred import Calculator, descriptors
 import joblib
-import shap
-import streamlit.components.v1 as components
 import warnings
+import shap
+import matplotlib.pyplot as plt
+import streamlit.components.v1 as components
+
 warnings.filterwarnings('ignore')
 
 # ============ Page Configuration ============
@@ -55,12 +57,12 @@ st.markdown("""
         border-radius: 8px;
         margin: 10px 0;
     }
-    .shap-container {
-        background-color: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        margin: 20px 0;
+    .shap-info {
+        background-color: #e3f2fd;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #2196f3;
+        margin: 10px 0;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -71,19 +73,7 @@ st.markdown("""
 def calculate_all_descriptors(smiles, drug_name="Unknown"):
     """
     Calculate all Mordred 2D and RDKit descriptors, then extract required 35 features
-    
-    Parameters:
-    -----------
-    smiles : str
-        SMILES code of the drug
-    drug_name : str
-        Drug name
-        
-    Returns:
-    --------
-    DataFrame : DataFrame containing 35 descriptors
     """
-    
     try:
         mol = Chem.MolFromSmiles(smiles)
         
@@ -165,122 +155,6 @@ def load_model(model_path='gbdt_lactation_risk_pipeline.pkl'):
         return None
 
 
-# ============ SHAP Force Plot Function ============
-def generate_shap_force_plot(descriptor_df, pipeline, drug_name="Unknown Drug"):
-    """
-    Generate SHAP force plot for a single prediction
-    
-    Parameters:
-    -----------
-    descriptor_df : DataFrame
-        Molecular descriptors
-    pipeline : dict
-        Model pipeline containing model, scaler, and feature names
-    drug_name : str
-        Name of the drug
-        
-    Returns:
-    --------
-    str : HTML string of SHAP force plot
-    dict : Dictionary containing SHAP analysis details
-    """
-    try:
-        model = pipeline['model']
-        scaler = pipeline['scaler']
-        feature_names = pipeline['feature_names']
-        
-        # Ensure correct feature order
-        descriptor_df = descriptor_df[feature_names]
-        
-        # Standardization
-        descriptor_std = scaler.transform(descriptor_df)
-        descriptor_std_df = pd.DataFrame(descriptor_std, 
-                                         columns=feature_names, 
-                                         index=descriptor_df.index)
-        
-        # Create background dataset (use standardized data)
-        # For single prediction, we'll use the sample itself as background
-        background_data = descriptor_std_df
-        
-        # Initialize SHAP explainer
-        explainer = shap.TreeExplainer(
-            model,
-            data=background_data,
-            feature_perturbation="interventional",
-            model_output="probability"
-        )
-        
-        # Calculate SHAP values
-        shap_values_proba = explainer.shap_values(descriptor_std_df)
-        
-        # Handle SHAP values dimension (binary classification - take positive class)
-        if isinstance(shap_values_proba, list):
-            if len(shap_values_proba) == 2:
-                shap_values_array = shap_values_proba[1]  # Positive class
-            else:
-                shap_values_array = np.mean(shap_values_proba, axis=0)
-        else:
-            shap_values_array = shap_values_proba
-        
-        # Get base value (expected value in probability space)
-        if isinstance(explainer.expected_value, (list, np.ndarray)):
-            if len(explainer.expected_value) > 1:
-                base_value = explainer.expected_value[1]  # Positive class
-            else:
-                base_value = explainer.expected_value[0]
-        else:
-            base_value = explainer.expected_value
-        
-        # Get SHAP values for the sample
-        sample_shap = shap_values_array[0, :]
-        sample_original = descriptor_df.iloc[0, :].values
-        
-        # Calculate predicted probability
-        pred_proba = model.predict_proba(descriptor_std_df)[0, 1]
-        
-        # Round original feature values
-        sample_original_rounded = np.round(sample_original, 2)
-        
-        # Generate force plot HTML
-        shap.initjs()
-        force_plot = shap.force_plot(
-            base_value=base_value,
-            shap_values=sample_shap,
-            features=sample_original_rounded,
-            feature_names=feature_names,
-            matplotlib=False  # Use HTML rendering
-        )
-        
-        # Convert to HTML
-        shap_html = f"<head>{shap.getjs()}</head><body>{force_plot.html()}</body>"
-        
-        # Prepare analysis details
-        analysis_details = {
-            'base_value': base_value,
-            'pred_proba': pred_proba,
-            'shap_sum': sample_shap.sum(),
-            'verification_diff': abs((base_value + sample_shap.sum()) - pred_proba),
-            'feature_contributions': []
-        }
-        
-        # Get top 10 contributing features
-        shap_abs = np.abs(sample_shap)
-        top_10_idx = np.argsort(shap_abs)[-10:][::-1]
-        
-        for idx in top_10_idx:
-            analysis_details['feature_contributions'].append({
-                'feature': feature_names[idx],
-                'value': sample_original_rounded[idx],
-                'shap': sample_shap[idx]
-            })
-        
-        return shap_html, analysis_details
-        
-    except Exception as e:
-        st.error(f"❌ Error generating SHAP plot: {str(e)}")
-        return None, None
-
-
 # ============ Prediction Function ============
 def predict_risk(descriptor_df, pipeline):
     """
@@ -313,11 +187,121 @@ def predict_risk(descriptor_df, pipeline):
             'High Risk Probability': probabilities[:, 1]
         })
         
-        return results
+        return results, descriptor_std
     
     except Exception as e:
         st.error(f"❌ Prediction error: {str(e)}")
-        return None
+        return None, None
+
+
+# ============ SHAP Analysis Function ============
+def generate_shap_force_plot(descriptor_std, descriptor_original, pipeline, drug_name="Unknown"):
+    """
+    Generate SHAP Force Plot for a single sample
+    
+    Parameters:
+    -----------
+    descriptor_std : DataFrame
+        Standardized descriptors (model input)
+    descriptor_original : DataFrame
+        Original descriptors (for display)
+    pipeline : dict
+        Model pipeline
+    drug_name : str
+        Drug name
+    
+    Returns:
+    --------
+    fig : matplotlib figure
+        SHAP force plot figure
+    shap_df : DataFrame
+        SHAP values dataframe
+    """
+    try:
+        model = pipeline['model']
+        feature_names = pipeline['feature_names']
+        
+        # Create background data (use a subset if data is large)
+        background_data = descriptor_std.iloc[:1]  # For single prediction, use itself as background
+        
+        # Initialize SHAP explainer
+        explainer = shap.TreeExplainer(
+            model,
+            data=background_data,
+            feature_perturbation="interventional",
+            model_output="probability"
+        )
+        
+        # Calculate SHAP values
+        shap_values_proba = explainer.shap_values(descriptor_std)
+        
+        # Handle SHAP values dimension (binary classification - use positive class)
+        if isinstance(shap_values_proba, list):
+            if len(shap_values_proba) == 2:
+                shap_values_array = shap_values_proba[1]  # Positive class (High Risk)
+            else:
+                shap_values_array = np.mean(shap_values_proba, axis=0)
+        else:
+            shap_values_array = shap_values_proba
+        
+        # Get base value (expected value)
+        if isinstance(explainer.expected_value, (list, np.ndarray)):
+            if len(explainer.expected_value) > 1:
+                base_value = explainer.expected_value[1]  # Binary classification - positive class
+            else:
+                base_value = explainer.expected_value[0]
+        else:
+            base_value = explainer.expected_value
+        
+        # Get sample SHAP values
+        sample_shap = shap_values_array[0, :]
+        
+        # Get original feature values for display
+        sample_features_original = descriptor_original.iloc[0, :].values
+        sample_features_original_rounded = np.round(sample_features_original, 2)
+        
+        # Predict probability
+        pred_proba = model.predict_proba(descriptor_std)[0, 1]  # High risk probability
+        
+        # Create SHAP values DataFrame
+        shap_df = pd.DataFrame({
+            'Feature': feature_names,
+            'Original Value': sample_features_original_rounded,
+            'SHAP Value': sample_shap,
+            'Impact': ['↑ Risk' if s > 0 else '↓ Risk' for s in sample_shap],
+            'Abs SHAP': np.abs(sample_shap)
+        }).sort_values('Abs SHAP', ascending=False)
+        
+        # Create Force Plot using matplotlib
+        shap.initjs()
+        
+        fig, ax = plt.subplots(figsize=(14, 3))
+        
+        # Use SHAP's force_plot with matplotlib backend
+        shap.force_plot(
+            base_value=base_value,
+            shap_values=sample_shap,
+            features=sample_features_original_rounded,
+            feature_names=feature_names,
+            matplotlib=True,
+            show=False
+        )
+        
+        plt.title(
+            f'SHAP Force Plot - {drug_name}\n'
+            f'Base Value (Avg Probability): {base_value:.4f} → '
+            f'Predicted Probability (High Risk): {pred_proba:.4f}',
+            fontsize=12,
+            fontweight='bold',
+            pad=15
+        )
+        plt.tight_layout()
+        
+        return fig, shap_df, base_value, pred_proba, sample_shap
+        
+    except Exception as e:
+        st.error(f"❌ SHAP analysis error: {str(e)}")
+        return None, None, None, None, None
 
 
 # ============ Main Interface ============
@@ -345,12 +329,12 @@ def main():
     **Features:**
     - Single drug prediction
     - Batch prediction
-    - SMILES-based input
     - SHAP interpretability analysis
+    - SMILES-based input
     
     **Model:** Gradient Boosting Decision Tree (GBDT)
     
-    **Version:** 1.0
+    **Version:** 1.1
     """)
     
     st.sidebar.markdown("---")
@@ -363,12 +347,12 @@ def main():
     st.sidebar.markdown("""
     1. **Single Prediction**: Enter drug name and SMILES code
     2. **Batch Prediction**: Upload CSV file with multiple drugs
-    3. Click **Predict** button to get results
-    4. View **SHAP Analysis** to understand model decisions
+    3. **SHAP Analysis**: Interpret model predictions
+    4. Click **Predict** button to get results
     """)
     
     # Main tabs
-    tab1, tab2 = st.tabs(["🔬 Single Prediction", "📊 Batch Prediction"])
+    tab1, tab2, tab3 = st.tabs(["🔬 Single Prediction", "📊 Batch Prediction", "🧠 SHAP Analysis"])
     
     # ========== Tab 1: Single Prediction ==========
     with tab1:
@@ -430,10 +414,19 @@ def main():
                         st.error("❌ Invalid SMILES code! Please check your input.")
                     else:
                         # Predict
-                        results = predict_risk(descriptor_df, pipeline)
+                        results, descriptor_std = predict_risk(descriptor_df, pipeline)
                         
                         if results is not None:
                             st.success("✅ Prediction completed!")
+                            
+                            # Store results in session state for SHAP analysis
+                            st.session_state.last_prediction = {
+                                'drug_name': drug_name,
+                                'smiles': smiles_input,
+                                'descriptor_original': descriptor_df,
+                                'descriptor_std': descriptor_std,
+                                'results': results
+                            }
                             
                             # Display results
                             st.markdown("### 📊 Prediction Results")
@@ -471,80 +464,12 @@ def main():
                             })
                             st.bar_chart(prob_data.set_index('Risk Category'))
                             
-                            # ========== SHAP Analysis Section ==========
-                            st.markdown("---")
-                            st.markdown("### 🔍 SHAP Interpretability Analysis")
-                            st.info("📊 SHAP (SHapley Additive exPlanations) values show how each molecular descriptor contributes to the prediction.")
-                            
-                            with st.spinner("Generating SHAP analysis..."):
-                                shap_html, analysis_details = generate_shap_force_plot(
-                                    descriptor_df, 
-                                    pipeline, 
-                                    drug_name
-                                )
-                                
-                                if shap_html is not None and analysis_details is not None:
-                                    # Display SHAP Force Plot
-                                    st.markdown("#### 📊 SHAP Force Plot")
-                                    st.markdown(f"""
-                                    <div class="shap-container">
-                                        <p><strong>Drug:</strong> {drug_name}</p>
-                                        <p><strong>Base Value (Population Average):</strong> {analysis_details['base_value']:.4f}</p>
-                                        <p><strong>Predicted Probability:</strong> {analysis_details['pred_proba']:.4f}</p>
-                                        <p><em>Red features push the prediction higher (towards high risk), blue features push it lower (towards low risk).</em></p>
-                                    </div>
-                                    """, unsafe_allow_html=True)
-                                    
-                                    # Render SHAP force plot
-                                    components.html(shap_html, height=150, scrolling=True)
-                                    
-                                    # Display detailed feature contributions
-                                    st.markdown("#### 📋 Top 10 Feature Contributions")
-                                    
-                                    contrib_df = pd.DataFrame(analysis_details['feature_contributions'])
-                                    contrib_df['SHAP Value'] = contrib_df['shap'].apply(lambda x: f"{x:+.4f}")
-                                    contrib_df['Feature Value'] = contrib_df['value'].apply(lambda x: f"{x:.2f}")
-                                    contrib_df = contrib_df[['feature', 'Feature Value', 'SHAP Value']]
-                                    contrib_df.columns = ['Feature Name', 'Feature Value', 'SHAP Contribution']
-                                    
-                                    st.dataframe(contrib_df, use_container_width=True)
-                                    
-                                    # Explanation
-                                    with st.expander("❓ How to Interpret SHAP Values"):
-                                        st.markdown("""
-                                        **Understanding SHAP Force Plot:**
-                                        
-                                        - **Base Value**: The average prediction across all samples (population baseline)
-                                        - **SHAP Value**: The contribution of each feature to push the prediction away from the base value
-                                        - **Positive SHAP** (Red): Pushes prediction towards **High Risk** (Class 1)
-                                        - **Negative SHAP** (Blue): Pushes prediction towards **Low Risk** (Class 0)
-                                        
-                                        **Formula:**
-```
-                                        f(x) = Base Value + Σ(SHAP values) = Predicted Probability
-```
-                                        
-                                        **Example Interpretation:**
-                                        - If a feature has SHAP = +0.15, it increases the high-risk probability by 15%
-                                        - If a feature has SHAP = -0.10, it decreases the high-risk probability by 10%
-                                        """)
-                                    
-                                    # Verification details
-                                    with st.expander("🔬 SHAP Verification Details"):
-                                        st.markdown(f"""
-                                        **Mathematical Verification:**
-                                        - Base Value: `{analysis_details['base_value']:.4f}`
-                                        - Sum of All SHAP Values: `{analysis_details['shap_sum']:+.4f}`
-                                        - **f(x) = Base + SHAP Sum**: `{analysis_details['base_value'] + analysis_details['shap_sum']:.4f}`
-                                        - **Predicted Probability**: `{analysis_details['pred_proba']:.4f}`
-                                        - **Difference**: `{analysis_details['verification_diff']:.6f}` (should be ≈ 0)
-                                        
-                                        ✅ The SHAP values correctly explain the model's prediction!
-                                        """)
-                            
                             # Display molecular descriptors
-                            with st.expander("🔬 View All Molecular Descriptors"):
+                            with st.expander("🔬 View Molecular Descriptors"):
                                 st.dataframe(descriptor_df.T, use_container_width=True)
+                            
+                            # Add button to jump to SHAP analysis
+                            st.info("💡 Go to **SHAP Analysis** tab to see detailed feature contributions!")
     
     # ========== Tab 2: Batch Prediction ==========
     with tab2:
@@ -619,7 +544,7 @@ def main():
                                 
                                 if descriptor_df is not None:
                                     # Predict
-                                    result = predict_risk(descriptor_df, pipeline)
+                                    result, _ = predict_risk(descriptor_df, pipeline)
                                     if result is not None:
                                         all_results.append(result)
                                     else:
@@ -682,11 +607,213 @@ def main():
             except Exception as e:
                 st.error(f"❌ Error reading file: {str(e)}")
     
+    # ========== Tab 3: SHAP Analysis ==========
+    with tab3:
+        st.header("🧠 SHAP Interpretability Analysis")
+        
+        st.markdown("""
+        <div class="shap-info">
+            <h4>📌 What is SHAP?</h4>
+            <p><strong>SHAP (SHapley Additive exPlanations)</strong> is a method to explain individual predictions by computing the contribution of each feature.</p>
+            <ul>
+                <li><strong>Force Plot</strong>: Shows how each feature pushes the prediction higher (red) or lower (blue) from the base value</li>
+                <li><strong>Base Value</strong>: Average prediction probability across all training samples</li>
+                <li><strong>Feature Contributions</strong>: Positive SHAP values increase risk, negative values decrease risk</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Check if there's a recent prediction
+        if 'last_prediction' not in st.session_state:
+            st.warning("⚠️ No prediction available. Please make a prediction in the 'Single Prediction' tab first!")
+            
+            # Allow manual input for SHAP analysis
+            st.markdown("### 🔬 Manual Input for SHAP Analysis")
+            
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                shap_drug_name = st.text_input("Drug Name", placeholder="e.g., Amoxicillin", key="shap_drug_name")
+                shap_smiles_input = st.text_area(
+                    "SMILES Code", 
+                    placeholder="Enter SMILES code here...",
+                    height=100,
+                    key="shap_smiles_input"
+                )
+            
+            with col2:
+                st.markdown("### 🧪 Quick Examples")
+                if st.button("📌 Amoxicillin", use_container_width=True, key="shap_amox"):
+                    st.session_state.shap_smiles = "CC1(C)S[C@@H]2[C@H](NC(=O)[C@H](N)c3ccc(O)cc3)C(=O)N2[C@H]1C(=O)O"
+                    st.session_state.shap_drug = "Amoxicillin"
+                    st.rerun()
+                
+                if st.button("📌 Amiodarone", use_container_width=True, key="shap_amio"):
+                    st.session_state.shap_smiles = "CCCCc1oc2ccccc2c1C(=O)c1cc(I)c(OCCN(CC)CC)c(I)c1"
+                    st.session_state.shap_drug = "Amiodarone"
+                    st.rerun()
+            
+            # Use session state values if available
+            if 'shap_smiles' in st.session_state:
+                shap_smiles_input = st.session_state.shap_smiles
+            if 'shap_drug' in st.session_state:
+                shap_drug_name = st.session_state.shap_drug
+            
+            if st.button("🚀 Analyze with SHAP", type="primary", use_container_width=True):
+                
+                if not shap_smiles_input.strip():
+                    st.error("⚠️ Please enter a SMILES code!")
+                else:
+                    with st.spinner("Calculating molecular descriptors and performing SHAP analysis..."):
+                        
+                        if not shap_drug_name.strip():
+                            shap_drug_name = "Unknown Drug"
+                        
+                        # Calculate descriptors
+                        descriptor_df = calculate_all_descriptors(shap_smiles_input.strip(), shap_drug_name)
+                        
+                        if descriptor_df is None:
+                            st.error("❌ Invalid SMILES code! Please check your input.")
+                        else:
+                            # Predict
+                            results, descriptor_std = predict_risk(descriptor_df, pipeline)
+                            
+                            if results is not None:
+                                # Store in session state
+                                st.session_state.last_prediction = {
+                                    'drug_name': shap_drug_name,
+                                    'smiles': shap_smiles_input,
+                                    'descriptor_original': descriptor_df,
+                                    'descriptor_std': descriptor_std,
+                                    'results': results
+                                }
+                                st.rerun()
+        
+        else:
+            # Get last prediction data
+            last_pred = st.session_state.last_prediction
+            drug_name = last_pred['drug_name']
+            descriptor_original = last_pred['descriptor_original']
+            descriptor_std = last_pred['descriptor_std']
+            results = last_pred['results']
+            
+            st.success(f"✅ Analyzing prediction for: **{drug_name}**")
+            
+            # Display basic prediction info
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Drug Name", drug_name)
+            with col2:
+                risk_level = results.iloc[0]['Risk Level']
+                st.metric("Prediction", risk_level)
+            with col3:
+                high_prob = results.iloc[0]['High Risk Probability']
+                st.metric("High Risk Probability", f"{high_prob:.2%}")
+            
+            st.markdown("---")
+            
+            # Generate SHAP analysis
+            with st.spinner("Generating SHAP Force Plot..."):
+                
+                fig, shap_df, base_value, pred_proba, sample_shap = generate_shap_force_plot(
+                    descriptor_std,
+                    descriptor_original,
+                    pipeline,
+                    drug_name
+                )
+                
+                if fig is not None:
+                    st.success("✅ SHAP analysis completed!")
+                    
+                    # Display Force Plot
+                    st.markdown("### 📊 SHAP Force Plot")
+                    st.pyplot(fig)
+                    
+                    # Explanation
+                    st.markdown("""
+                    <div class="info-box">
+                        <h4>📖 How to Read This Plot:</h4>
+                        <ul>
+                            <li><strong style="color: #f44336;">Red features</strong> push the prediction towards <strong>High Risk</strong></li>
+                            <li><strong style="color: #2196f3;">Blue features</strong> push the prediction towards <strong>Low Risk</strong></li>
+                            <li>The <strong>base value</strong> is the average prediction across all samples</li>
+                            <li>The <strong>output value</strong> is the final predicted probability for this drug</li>
+                        </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("---")
+                    
+                    # Display detailed SHAP values
+                    st.markdown("### 📋 Feature Contributions (Top 15)")
+                    
+                    top_15_shap = shap_df.head(15)
+                    
+                    # Format display
+                    display_df = top_15_shap[['Feature', 'Original Value', 'SHAP Value', 'Impact']].copy()
+                    display_df['SHAP Value'] = display_df['SHAP Value'].apply(lambda x: f"{x:+.4f}")
+                    
+                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+                    
+                    # Summary statistics
+                    st.markdown("### 📈 SHAP Summary")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Base Probability", f"{base_value:.4f}")
+                    with col2:
+                        st.metric("Predicted Probability", f"{pred_proba:.4f}")
+                    with col3:
+                        positive_sum = sample_shap[sample_shap > 0].sum()
+                        st.metric("Positive SHAP Sum", f"+{positive_sum:.4f}")
+                    with col4:
+                        negative_sum = sample_shap[sample_shap < 0].sum()
+                        st.metric("Negative SHAP Sum", f"{negative_sum:.4f}")
+                    
+                    # Verification
+                    shap_sum = sample_shap.sum()
+                    calculated_prob = base_value + shap_sum
+                    difference = abs(calculated_prob - pred_proba)
+                    
+                    st.markdown("### ✅ SHAP Value Verification")
+                    st.code(f"""
+Base Value:             {base_value:.6f}
++ Total SHAP Values:    {shap_sum:+.6f}
+= Calculated:           {calculated_prob:.6f}
+Predicted Probability:  {pred_proba:.6f}
+Difference:             {difference:.8f} (should be ≈ 0)
+                    """)
+                    
+                    # Download SHAP results
+                    st.markdown("### 💾 Download SHAP Results")
+                    
+                    csv_shap = shap_df.to_csv(index=False)
+                    st.download_button(
+                        label="⬇️ Download SHAP Values as CSV",
+                        data=csv_shap,
+                        file_name=f"shap_analysis_{drug_name.replace(' ', '_')}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                    
+                    # Option to view all features
+                    with st.expander("🔍 View All Feature Contributions"):
+                        st.dataframe(shap_df, use_container_width=True, hide_index=True)
+                else:
+                    st.error("❌ SHAP analysis failed. Please try again.")
+            
+            # Button to clear and analyze new drug
+            if st.button("🔄 Analyze Another Drug", use_container_width=True):
+                del st.session_state.last_prediction
+                st.rerun()
+    
     # Footer
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: #666; padding: 20px;'>
-        <p><strong>LRCpredictor v1.0</strong> | Powered by GBDT & Streamlit</p>
+        <p><strong>LRCpredictor v1.1</strong> | Powered by GBDT, SHAP & Streamlit</p>
         <p>⚠️ <em>Disclaimer: This tool is for research purposes only. Clinical decisions should be made by healthcare professionals.</em></p>
     </div>
     """, unsafe_allow_html=True)
