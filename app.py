@@ -18,7 +18,45 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
+# ============ Custom CSS Styles ============
+st.markdown("""
+    <style>
+    .main-title {
+        font-size: 72px;
+        font-weight: bold;
+        color: #1f77b4;
+        text-align: center;
+        margin-bottom: 10px;
+    }
+    .sub-title {
+        font-size: 20px;
+        color: #666;
+        text-align: center;
+        margin-bottom: 30px;
+    }
+    .risk-high {
+        background-color: #ffebee;
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 5px solid #f44336;
+    }
+    .risk-low {
+        background-color: #e8f5e9;
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 5px solid #4caf50;
+    }
+    .stAlert {
+        margin-top: 20px;
+    }
+    .info-box {
+        background-color: #f0f2f6;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 10px 0;
+    }
+    </style>
+""", unsafe_allow_html=True)
 # ============ Custom CSS Styles ============
 st.markdown("""
     <style>
