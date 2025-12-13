@@ -9,6 +9,7 @@ import warnings
 import shap
 import matplotlib.pyplot as plt
 import matplotlib
+from io import BytesIO
 warnings.filterwarnings('ignore')
 
 # 设置matplotlib后端
@@ -223,13 +224,15 @@ def generate_shap_force_plot(descriptor_df_original, descriptor_df_std, pipeline
         SHAP force plot figure
     shap_df : DataFrame
         SHAP values and feature contributions
+    summary : dict
+        Summary information
     """
     
     try:
         model = pipeline['model']
         
         # Create background data (using standardized values)
-        # For single prediction, we'll use the input itself as background
+        # Use a single point as background for faster computation
         background_data = descriptor_df_std
         
         # Initialize SHAP explainer
@@ -272,21 +275,23 @@ def generate_shap_force_plot(descriptor_df_original, descriptor_df_std, pipeline
         # Round original feature values for display
         display_features = np.round(sample_features_original, 2)
         
-        # Create force plot
+        # Create force plot using matplotlib
         shap.initjs()
         
-        fig, ax = plt.subplots(figsize=(20, 3))
+        # Create a larger figure
+        fig = plt.figure(figsize=(20, 3))
         
+        # Generate force plot without ax parameter
         shap.force_plot(
             base_value=base_value,
             shap_values=sample_shap,
             features=display_features,
             feature_names=feature_names,
             matplotlib=True,
-            show=False,
-            ax=ax
+            show=False
         )
         
+        # Add title
         plt.title(
             f'SHAP Force Plot - {drug_name}\n'
             f'Base Value (Average Probability): {base_value:.4f} → '
@@ -324,6 +329,8 @@ def generate_shap_force_plot(descriptor_df_original, descriptor_df_std, pipeline
         
     except Exception as e:
         st.error(f"❌ Error generating SHAP plot: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
         return None, None, None
 
 
@@ -370,7 +377,7 @@ def main():
     st.sidebar.markdown("""
     1. **Single Prediction**: Enter drug name and SMILES code
     2. **Batch Prediction**: Upload CSV file with multiple drugs
-    3. **SHAP Analysis**: Interpret model predictions
+    3. **SHAP Analysis**: View model interpretation automatically
     4. Click **Predict** button to get results
     """)
     
@@ -478,17 +485,94 @@ def main():
                             })
                             st.bar_chart(prob_data.set_index('Risk Category'))
                             
+                            # ============ SHAP Force Plot - 添加在单个预测结果下方 ============
+                            st.markdown("---")
+                            st.markdown("### 🔍 SHAP Force Plot - Model Interpretation")
+                            
+                            with st.spinner("Generating SHAP analysis..."):
+                                fig, shap_df, summary = generate_shap_force_plot(
+                                    descriptor_df_original=descriptor_df,
+                                    descriptor_df_std=descriptor_std,
+                                    pipeline=pipeline,
+                                    drug_name=drug_name
+                                )
+                                
+                                if fig is not None and shap_df is not None and summary is not None:
+                                    
+                                    # Display SHAP summary metrics
+                                    col1, col2, col3 = st.columns(3)
+                                    with col1:
+                                        st.metric("Base Probability", f"{summary['base_value']:.4f}")
+                                    with col2:
+                                        st.metric("Predicted Probability", f"{summary['predicted_probability']:.4f}")
+                                    with col3:
+                                        st.metric("Prediction", summary['prediction'])
+                                    
+                                    # Display Force Plot
+                                    st.pyplot(fig)
+                                    plt.close(fig)
+                                    
+                                    st.info("""
+                                    **How to read this plot:**
+                                    - **Red features (→)**: Push prediction towards **High Risk**
+                                    - **Blue features (←)**: Push prediction towards **Low Risk**
+                                    - Feature values shown are **original values** (before standardization)
+                                    - Arrow length represents the magnitude of impact
+                                    """)
+                                    
+                                    # Display top feature contributions
+                                    with st.expander("📋 View Top 10 Feature Contributions", expanded=False):
+                                        top_features = shap_df.head(10)[['Feature', 'Original Value', 'SHAP Value', 'Impact']]
+                                        st.dataframe(
+                                            top_features.style.format({
+                                                'Original Value': '{:.2f}',
+                                                'SHAP Value': '{:+.4f}'
+                                            }),
+                                            use_container_width=True
+                                        )
+                                    
+                                    # Download SHAP results
+                                    with st.expander("💾 Download SHAP Analysis", expanded=False):
+                                        col1, col2 = st.columns(2)
+                                        
+                                        with col1:
+                                            # Download SHAP values as CSV
+                                            csv_shap = shap_df.to_csv(index=False)
+                                            st.download_button(
+                                                label="⬇️ Download SHAP Values (CSV)",
+                                                data=csv_shap,
+                                                file_name=f"SHAP_analysis_{drug_name}.csv",
+                                                mime="text/csv",
+                                                use_container_width=True
+                                            )
+                                        
+                                        with col2:
+                                            # Download Force Plot as PNG
+                                            buf = BytesIO()
+                                            fig.savefig(buf, format='png', dpi=300, bbox_inches='tight', facecolor='white')
+                                            buf.seek(0)
+                                            st.download_button(
+                                                label="⬇️ Download Force Plot (PNG)",
+                                                data=buf,
+                                                file_name=f"SHAP_ForcePlot_{drug_name}.png",
+                                                mime="image/png",
+                                                use_container_width=True
+                                            )
+                                    
+                                    # Store in session state for SHAP Analysis tab
+                                    st.session_state.last_prediction = {
+                                        'drug_name': drug_name,
+                                        'descriptor_original': descriptor_df,
+                                        'descriptor_std': descriptor_std,
+                                        'smiles': smiles_input,
+                                        'shap_fig': fig,
+                                        'shap_df': shap_df,
+                                        'shap_summary': summary
+                                    }
+                            
                             # Display molecular descriptors
                             with st.expander("🔬 View Molecular Descriptors"):
                                 st.dataframe(descriptor_df.T, use_container_width=True)
-                            
-                            # Store in session state for SHAP analysis
-                            st.session_state.last_prediction = {
-                                'drug_name': drug_name,
-                                'descriptor_original': descriptor_df,
-                                'descriptor_std': descriptor_std,
-                                'smiles': smiles_input
-                            }
     
     # ========== Tab 2: Batch Prediction ==========
     with tab2:
@@ -639,109 +723,58 @@ def main():
         
         # Option 1: Use last prediction from Tab 1
         if 'last_prediction' in st.session_state:
-            st.success(f"✅ Using last prediction: **{st.session_state.last_prediction['drug_name']}**")
+            st.success(f"✅ Displaying SHAP analysis for: **{st.session_state.last_prediction['drug_name']}**")
             
-            if st.button("🎯 Generate SHAP Force Plot", type="primary", use_container_width=True):
+            last_pred = st.session_state.last_prediction
+            
+            if 'shap_summary' in last_pred and last_pred['shap_summary'] is not None:
+                summary = last_pred['shap_summary']
+                shap_df = last_pred['shap_df']
                 
-                with st.spinner("Generating SHAP analysis..."):
-                    
-                    last_pred = st.session_state.last_prediction
-                    
-                    fig, shap_df, summary = generate_shap_force_plot(
-                        descriptor_df_original=last_pred['descriptor_original'],
-                        descriptor_df_std=last_pred['descriptor_std'],
-                        pipeline=pipeline,
-                        drug_name=last_pred['drug_name']
+                # Display summary information
+                st.markdown("### 📊 SHAP Summary")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Base Probability", f"{summary['base_value']:.4f}")
+                with col2:
+                    st.metric("Predicted Probability", f"{summary['predicted_probability']:.4f}")
+                with col3:
+                    st.metric("Prediction", summary['prediction'])
+                
+                st.info(f"""
+                **SHAP Verification:** 
+                - f(x) = Base Value + Σ(SHAP values) = {summary['base_value'] + summary['shap_sum']:.4f}
+                - Predicted Probability = {summary['predicted_probability']:.4f}
+                - Difference (should be ≈ 0): {summary['verification']:.6f}
+                """)
+                
+                # Display feature contributions table
+                st.markdown("### 📋 All Feature Contributions (Sorted by Importance)")
+                
+                st.dataframe(
+                    shap_df.style.format({
+                        'Original Value': '{:.2f}',
+                        'SHAP Value': '{:+.4f}',
+                        'Abs SHAP Value': '{:.4f}'
+                    }),
+                    use_container_width=True
+                )
+                
+                # Download options
+                st.markdown("### 💾 Download SHAP Analysis")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    csv_shap = shap_df.to_csv(index=False)
+                    st.download_button(
+                        label="⬇️ Download SHAP Values (CSV)",
+                        data=csv_shap,
+                        file_name=f"SHAP_analysis_{last_pred['drug_name']}.csv",
+                        mime="text/csv",
+                        use_container_width=True
                     )
-                    
-                    if fig is not None:
-                        st.success("✅ SHAP analysis completed!")
-                        
-                        # Display summary information
-                        st.markdown("### 📊 SHAP Summary")
-                        
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Base Probability", f"{summary['base_value']:.4f}")
-                        with col2:
-                            st.metric("Predicted Probability", f"{summary['predicted_probability']:.4f}")
-                        with col3:
-                            st.metric("Prediction", summary['prediction'])
-                        
-                        st.info(f"""
-                        **SHAP Verification:** 
-                        - f(x) = Base Value + Σ(SHAP values) = {summary['base_value'] + summary['shap_sum']:.4f}
-                        - Predicted Probability = {summary['predicted_probability']:.4f}
-                        - Difference (should be ≈ 0): {summary['verification']:.6f}
-                        """)
-                        
-                        # Display Force Plot
-                        st.markdown("### 📈 SHAP Force Plot")
-                        st.pyplot(fig)
-                        plt.close(fig)
-                        
-                        st.markdown("""
-                        **How to read this plot:**
-                        - **Red arrows (→)**: Features pushing the prediction towards **High Risk**
-                        - **Blue arrows (←)**: Features pushing the prediction towards **Low Risk**
-                        - The length of each arrow represents the magnitude of the feature's impact
-                        - Features are labeled with their original values
-                        """)
-                        
-                        # Display feature contributions table
-                        st.markdown("### 📋 Top Feature Contributions")
-                        
-                        # Show top 15 features
-                        top_features = shap_df.head(15)[['Feature', 'Original Value', 'SHAP Value', 'Impact']]
-                        
-                        st.dataframe(
-                            top_features.style.format({
-                                'Original Value': '{:.2f}',
-                                'SHAP Value': '{:+.4f}'
-                            }),
-                            use_container_width=True
-                        )
-                        
-                        # Full feature table in expander
-                        with st.expander("🔬 View All Feature Contributions"):
-                            st.dataframe(
-                                shap_df.style.format({
-                                    'Original Value': '{:.2f}',
-                                    'SHAP Value': '{:+.4f}',
-                                    'Abs SHAP Value': '{:.4f}'
-                                }),
-                                use_container_width=True
-                            )
-                        
-                        # Download SHAP results
-                        st.markdown("### 💾 Download SHAP Analysis")
-                        
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            # Download SHAP values as CSV
-                            csv_shap = shap_df.to_csv(index=False)
-                            st.download_button(
-                                label="⬇️ Download SHAP Values (CSV)",
-                                data=csv_shap,
-                                file_name=f"SHAP_analysis_{last_pred['drug_name']}.csv",
-                                mime="text/csv",
-                                use_container_width=True
-                            )
-                        
-                        with col2:
-                            # Download Force Plot as PNG
-                            from io import BytesIO
-                            buf = BytesIO()
-                            fig.savefig(buf, format='png', dpi=300, bbox_inches='tight', facecolor='white')
-                            buf.seek(0)
-                            st.download_button(
-                                label="⬇️ Download Force Plot (PNG)",
-                                data=buf,
-                                file_name=f"SHAP_ForcePlot_{last_pred['drug_name']}.png",
-                                mime="image/png",
-                                use_container_width=True
-                            )
         
         else:
             st.info("ℹ️ No prediction available. Please go to **Single Prediction** tab and make a prediction first.")
@@ -811,7 +844,7 @@ def main():
                             if fig is not None:
                                 st.success("✅ SHAP analysis completed!")
                                 
-                                # Display results (same as above)
+                                # Display summary
                                 st.markdown("### 📊 SHAP Summary")
                                 
                                 col1, col2, col3 = st.columns(3)
@@ -829,27 +862,43 @@ def main():
                                 - Difference: {summary['verification']:.6f}
                                 """)
                                 
+                                # Display Force Plot
                                 st.markdown("### 📈 SHAP Force Plot")
                                 st.pyplot(fig)
                                 plt.close(fig)
                                 
-                                st.markdown("### 📋 Top Feature Contributions")
-                                top_features = shap_df.head(15)[['Feature', 'Original Value', 'SHAP Value', 'Impact']]
+                                # Display features table
+                                st.markdown("### 📋 Feature Contributions")
                                 st.dataframe(
-                                    top_features.style.format({
+                                    shap_df.style.format({
                                         'Original Value': '{:.2f}',
-                                        'SHAP Value': '{:+.4f}'
+                                        'SHAP Value': '{:+.4f}',
+                                        'Abs SHAP Value': '{:.4f}'
                                     }),
                                     use_container_width=True
                                 )
                                 
-                                with st.expander("🔬 View All Feature Contributions"):
-                                    st.dataframe(
-                                        shap_df.style.format({
-                                            'Original Value': '{:.2f}',
-                                            'SHAP Value': '{:+.4f}',
-                                            'Abs SHAP Value': '{:.4f}'
-                                        }),
+                                # Download options
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    csv_shap = shap_df.to_csv(index=False)
+                                    st.download_button(
+                                        label="⬇️ Download SHAP Values (CSV)",
+                                        data=csv_shap,
+                                        file_name=f"SHAP_analysis_{shap_drug_name}.csv",
+                                        mime="text/csv",
+                                        use_container_width=True
+                                    )
+                                
+                                with col2:
+                                    buf = BytesIO()
+                                    fig.savefig(buf, format='png', dpi=300, bbox_inches='tight', facecolor='white')
+                                    buf.seek(0)
+                                    st.download_button(
+                                        label="⬇️ Download Force Plot (PNG)",
+                                        data=buf,
+                                        file_name=f"SHAP_ForcePlot_{shap_drug_name}.png",
+                                        mime="image/png",
                                         use_container_width=True
                                     )
     
