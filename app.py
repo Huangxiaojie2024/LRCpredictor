@@ -176,12 +176,8 @@ def create_shap_force_plot(model, data_scaled, data_original, drug_name):
         Drug name for the plot
     """
     try:
-        # Initialize SHAP TreeExplainer with probability output
-        explainer = shap.TreeExplainer(
-            model,
-            feature_perturbation="interventional",
-            model_output="probability"
-        )
+        # Initialize SHAP TreeExplainer (不指定model_output参数)
+        explainer = shap.TreeExplainer(model)
         
         # Calculate SHAP values
         shap_values = explainer.shap_values(data_scaled)
@@ -191,6 +187,10 @@ def create_shap_force_plot(model, data_scaled, data_original, drug_name):
             # Binary classification: shap_values is a list [class_0, class_1]
             expected_value = explainer.expected_value[1]  # Base value for positive class
             shap_values_positive = shap_values[1][0]  # SHAP values for positive class, first sample
+        elif isinstance(shap_values, np.ndarray) and len(shap_values.shape) == 3:
+            # Shape: (n_samples, n_features, n_classes)
+            expected_value = explainer.expected_value[1]
+            shap_values_positive = shap_values[0, :, 1]
         else:
             # Fallback for other formats
             expected_value = explainer.expected_value
@@ -224,7 +224,7 @@ def create_shap_force_plot(model, data_scaled, data_original, drug_name):
         
         # Display prediction info
         pred_proba = model.predict_proba(data_scaled)[0, 1]
-        st.info(f"**Base Probability:** {expected_value:.4f} → **Predicted High Risk Probability:** {pred_proba:.4f}")
+        st.info(f"**Base Value:** {expected_value:.4f} → **Predicted High Risk Probability:** {pred_proba:.4f}")
         
         return True
         
@@ -436,7 +436,7 @@ def main():
                                 st.markdown("### 🔍 SHAP Force Plot Analysis")
                                 st.info("""
                                 **Understanding the SHAP Force Plot:**
-                                - **Base value**: Average prediction probability across all samples
+                                - **Base value**: Average model output across all samples
                                 - **Red features**: Push prediction towards HIGH risk (positive SHAP values)
                                 - **Blue features**: Push prediction towards LOW risk (negative SHAP values)
                                 - **Feature width**: Indicates the magnitude of impact on the prediction
