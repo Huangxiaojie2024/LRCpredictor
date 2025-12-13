@@ -660,16 +660,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
-
-**更新的 requirements.txt：**
-```
-numpy==1.23.5
-pandas==2.2.3
-scikit-learn==1.5.1
-joblib==1.4.2
-rdkit==2022.9.5
-mordred==1.2.0
-streamlit
-shap==0.41.0
-matplotlib==3.7.1
