@@ -7,9 +7,8 @@ from mordred import Calculator, descriptors
 import joblib
 import warnings
 import shap
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.use('Agg')  # 重要：使用非交互式后端
+import streamlit.components.v1 as components
+import os
 
 warnings.filterwarnings('ignore')
 
@@ -161,102 +160,79 @@ def load_model(model_path='gbdt_lactation_risk_pipeline.pkl'):
         return None
 
 
-# ============ SHAP Force Plot 绘制函数（根据你的本地代码改编）============
-def plot_shap_force_single_sample(
-    X_test_std,
-    X_test_original,
-    best_model,
-    drug_name
-):
+# ============ SHAP Force Plot Function (HTML渲染方式) ============
+def create_shap_force_plot(model, data_scaled, data_original, drug_name):
     """
-    绘制单个测试样本的SHAP Force Plot（f(x)显示为预测概率）
+    Generate SHAP force plot with HTML rendering
     
-    参数:
-    - X_test_std: 标准化后的测试集 (DataFrame) - 单个样本
-    - X_test_original: 原始测试集 (DataFrame) - 单个样本
-    - best_model: 训练好的模型
-    - drug_name: 药物名称
-    
-    返回:
-    - fig: matplotlib figure对象
+    Parameters:
+    -----------
+    model : trained model
+    data_scaled : DataFrame
+        Standardized feature data (single sample)
+    data_original : DataFrame
+        Original feature data (single sample)
+    drug_name : str
+        Drug name for the plot
     """
-    
     try:
-        # 1. 计算SHAP值（概率空间）
-        # 使用当前样本作为背景数据（因为只有一个样本）
-        background_data = X_test_std.copy()
-        
+        # Initialize SHAP TreeExplainer with probability output
         explainer = shap.TreeExplainer(
-            best_model, 
-            data=background_data,
+            model,
             feature_perturbation="interventional",
             model_output="probability"
         )
         
-        shap_values_proba = explainer.shap_values(X_test_std)
+        # Calculate SHAP values
+        shap_values = explainer.shap_values(data_scaled)
         
-        # 2. 处理SHAP值维度（二分类取正类）
-        if isinstance(shap_values_proba, list):
-            if len(shap_values_proba) == 2:
-                shap_values_array = shap_values_proba[1]  # 二分类正类
-            else:
-                shap_values_array = np.mean(shap_values_proba, axis=0)
+        # Handle binary classification - get positive class (high risk)
+        if isinstance(shap_values, list) and len(shap_values) == 2:
+            # Binary classification: shap_values is a list [class_0, class_1]
+            expected_value = explainer.expected_value[1]  # Base value for positive class
+            shap_values_positive = shap_values[1][0]  # SHAP values for positive class, first sample
         else:
-            shap_values_array = shap_values_proba
+            # Fallback for other formats
+            expected_value = explainer.expected_value
+            shap_values_positive = shap_values[0]
         
-        # 3. 获取基准值（expected_value）- 概率空间的基准值
-        if isinstance(explainer.expected_value, (list, np.ndarray)):
-            if len(explainer.expected_value) > 1:
-                base_value = explainer.expected_value[1]  # 二分类取正类
-            else:
-                base_value = explainer.expected_value[0]
-        else:
-            base_value = explainer.expected_value
-        
-        # 4. 获取样本数据（索引0，因为只有一个样本）
-        sample_idx = 0
-        sample_shap = shap_values_array[sample_idx, :]
-        sample_original = X_test_original.iloc[sample_idx, :]
-        
-        # 5. 计算预测概率
-        pred_proba = best_model.predict_proba(X_test_std)[0, 1]  # 正类概率
-        
-        # 6. 将原始特征值保留2位小数
-        sample_original_rounded = np.round(sample_original.values, 2)
-        
-        # 7. 创建matplotlib图形 - 关键修改点
-        fig = plt.figure(figsize=(20, 3), facecolor='white')
-        ax = fig.add_subplot(111)
-        
-        # 8. 使用shap.force_plot绘制（matplotlib模式）
-        shap.force_plot(
-            base_value=base_value,
-            shap_values=sample_shap,
-            features=sample_original_rounded,
-            feature_names=X_test_original.columns.tolist(),
-            matplotlib=True,
-            show=False,
-            figsize=(20, 3)
+        # Create force plot with HTML rendering
+        force_plot = shap.force_plot(
+            expected_value,
+            shap_values_positive,
+            data_original.iloc[0, :],
+            matplotlib=False,
+            plot_cmap=["#1e88e5", "#ff0d57"]  # Blue for negative, Red for positive
         )
         
-        # 9. 添加标题
-        plt.title(
-            f'SHAP Force Plot - {drug_name}\n'
-            f'Base Value: {base_value:.4f} → Predicted Probability: {pred_proba:.4f}',
-            fontsize=14,
-            fontweight='bold',
-            pad=20
-        )
+        # Save to temporary HTML file
+        html_file = f"temp_force_plot_{drug_name.replace(' ', '_')}.html"
+        shap.save_html(html_file, force_plot)
         
-        plt.tight_layout()
+        # Read and display HTML
+        with open(html_file, 'r', encoding='utf-8') as f:
+            html_content = f.read()
         
-        return fig
+        # Display using Streamlit components
+        components.html(html_content, height=400, scrolling=True)
+        
+        # Clean up temporary file
+        try:
+            os.remove(html_file)
+        except:
+            pass
+        
+        # Display prediction info
+        pred_proba = model.predict_proba(data_scaled)[0, 1]
+        st.info(f"**Base Probability:** {expected_value:.4f} → **Predicted High Risk Probability:** {pred_proba:.4f}")
+        
+        return True
         
     except Exception as e:
         st.error(f"❌ Error generating SHAP plot: {str(e)}")
         import traceback
         st.error(traceback.format_exc())
-        return None
+        return False
 
 
 # ============ Prediction Function ============
@@ -467,23 +443,18 @@ def main():
                                 """)
                                 
                                 with st.spinner("Generating SHAP force plot..."):
-                                    # 获取模型
+                                    # Get model from pipeline
                                     model = pipeline['model']
                                     
-                                    # 调用SHAP绘图函数
-                                    shap_fig = plot_shap_force_single_sample(
-                                        X_test_std=descriptor_std_df,
-                                        X_test_original=descriptor_df,
-                                        best_model=model,
+                                    # Create SHAP force plot
+                                    success = create_shap_force_plot(
+                                        model=model,
+                                        data_scaled=descriptor_std_df,
+                                        data_original=descriptor_df,
                                         drug_name=drug_name
                                     )
                                     
-                                    if shap_fig is not None:
-                                        # 显示图形
-                                        st.pyplot(shap_fig, use_container_width=True)
-                                        # 关闭图形以释放内存
-                                        plt.close(shap_fig)
-                                    else:
+                                    if not success:
                                         st.warning("⚠️ Unable to generate SHAP plot. Please check your data.")
                             
                             # Display molecular descriptors
