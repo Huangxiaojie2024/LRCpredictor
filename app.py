@@ -302,7 +302,7 @@ def generate_shap_force_plot(explainer, descriptor_df_original, descriptor_df_sc
         # feature_display_names = [
         #     f"{name} = {original_values[i]:.2f}" 
         #     for i, name in enumerate(feature_names)
-        ]
+        # ]
         # 只用特征名，SHAP会自动显示特征值
         feature_display_names = list(feature_names)
 
