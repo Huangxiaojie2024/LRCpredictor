@@ -4,4 +4,4 @@ rdkit-pypi
 pandas
 scikit-learn
 joblib
-git+https://github.com/mordred-descriptor/mordred.git
+
