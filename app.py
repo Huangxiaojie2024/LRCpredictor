@@ -196,7 +196,7 @@ def get_shap_explainer(_pipeline, X_background=None):
 # ============ Generate SHAP Force Plot ============
 def generate_shap_force_plot(explainer, descriptor_df_original, descriptor_df_scaled, pipeline, prediction_proba):
     """
-    Generate SHAP force plot with original feature values
+    Generate SHAP force plot with original feature values and probability output
     
     Parameters:
     -----------
@@ -232,7 +232,31 @@ def generate_shap_force_plot(explainer, descriptor_df_original, descriptor_df_sc
         if isinstance(expected_value, list):
             expected_value = expected_value[1]
         
-        # Create feature names with original values
+        # Convert base value from logit to probability
+        base_value_prob = 1 / (1 + np.exp(-expected_value))
+        
+        # Convert SHAP values from logit space to probability space
+        # For small changes, we can approximate: dP/dlogit ≈ P(1-P)
+        # But for accurate conversion, we use the actual prediction probability
+        
+        # Calculate the sum of SHAP values in logit space
+        shap_sum = np.sum(shap_values_class1)
+        
+        # The model output in logit space
+        model_output_logit = expected_value + shap_sum
+        
+        # Convert to probability (should match prediction_proba)
+        model_output_prob = 1 / (1 + np.exp(-model_output_logit))
+        
+        # Scale SHAP values to probability space
+        # We want: base_value_prob + scaled_shap_values = prediction_proba
+        if abs(shap_sum) > 1e-10:  # Avoid division by zero
+            scaling_factor = (prediction_proba - base_value_prob) / shap_sum
+            shap_values_prob = shap_values_class1 * scaling_factor
+        else:
+            shap_values_prob = shap_values_class1
+        
+        # Get feature names and original values
         feature_names = pipeline['feature_names']
         original_values = descriptor_df_original.values[0]
         
@@ -242,14 +266,15 @@ def generate_shap_force_plot(explainer, descriptor_df_original, descriptor_df_sc
             for i, name in enumerate(feature_names)
         ]
         
-        # Generate force plot
+        # Generate force plot with probability values
         force_plot = shap.force_plot(
-            expected_value,
-            shap_values_class1,
+            base_value_prob,  # Base value in probability space
+            shap_values_prob,  # SHAP values in probability space
             features=original_values,
             feature_names=feature_display_names,
             matplotlib=False,
             show=False,
+            link='identity',  # Use identity link since we already converted to probability
             out_names="High Risk Probability"
         )
         
@@ -260,6 +285,8 @@ def generate_shap_force_plot(explainer, descriptor_df_original, descriptor_df_sc
     
     except Exception as e:
         st.error(f"Error generating SHAP plot: {str(e)}")
+        import traceback
+        st.error(f"Detailed error: {traceback.format_exc()}")
         return None
 
 
