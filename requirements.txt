@@ -1,7 +1,7 @@
-numpy==1.23.5
-pandas==2.0.3
-streamlit==1.28.0
-scikit-learn==1.3.0
-joblib==1.3.2
-rdkit-pypi==2022.9.5
-mordred==1.2.0
+numpy
+streamlit
+rdkit-pypi
+pandas
+scikit-learn
+joblib
+mordred
