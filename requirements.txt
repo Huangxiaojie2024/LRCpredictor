@@ -7,3 +7,4 @@ mordred==1.2.0
 streamlit
 shap==0.42.1
 matplotlib==3.7.1
+ipython
