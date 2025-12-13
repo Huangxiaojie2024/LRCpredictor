@@ -1,34 +1,7 @@
-# Web Framework
-streamlit==1.28.0
-
-# Data Processing
-pandas==1.5.3
-numpy==1.23.5
-
-# Chemistry Libraries
-rdkit-pypi==2022.9.5
-mordred==1.2.0
-
-# Machine Learning
-scikit-learn==1.3.2
-joblib==1.3.2
-
-# Utilities
-six
-```
-
----
-
-## 🚀 Streamlit Cloud 部署配置
-
-### 文件结构：
-```
-LRCpredictor/
-│
-├── app.py
-├── gbdt_lactation_risk_pipeline.pkl
-├── requirements.txt              # 依赖包
-├── packages.txt                  # 系统依赖（新建）
-├── runtime.txt                   # Python版本（新建）
-├── README.md
-└── .gitignore
+streamlit
+pandas<2.0.0
+numpy<2.0.0
+rdkit-pypi
+mordred
+scikit-learn
+joblib
