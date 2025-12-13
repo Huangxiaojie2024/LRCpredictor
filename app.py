@@ -231,7 +231,7 @@ def get_shap_explainer(_pipeline, X_background=None):
         return None
 
 
-# ============ Generate SHAP Force Plot ============
+# ============ Generate  ============
 def generate_shap_force_plot(explainer, descriptor_df_original, descriptor_df_scaled, pipeline, prediction_proba):
     """
     Generate SHAP force plot with original feature values and probability output
@@ -299,10 +299,10 @@ def generate_shap_force_plot(explainer, descriptor_df_original, descriptor_df_sc
         original_values = descriptor_df_original.values[0]
         
         # Create custom feature names showing original values
-        feature_display_names = [
-            f"{name} = {original_values[i]:.2f}" 
-            for i, name in enumerate(feature_names)
-        ]
+        # feature_display_names = [
+        #     f"{name} = {original_values[i]:.2f}" 
+        #     for i, name in enumerate(feature_names)
+        # ]
         
         # Generate force plot with probability values
         force_plot = shap.force_plot(
