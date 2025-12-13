@@ -300,7 +300,7 @@ def generate_shap_force_plot(explainer, descriptor_df_original, descriptor_df_sc
         
         # Create custom feature names showing original values
         feature_display_names = [
-            f"{name} = {original_values[i]:.4f}" 
+            f"{name} = {original_values[i]:.2f}" 
             for i, name in enumerate(feature_names)
         ]
         
