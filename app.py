@@ -176,7 +176,10 @@ def create_shap_force_plot(model, data_scaled, data_original, drug_name):
         Drug name for the plot
     """
     try:
-        # Initialize SHAP TreeExplainer (不指定model_output参数)
+        # 先计算预测概率
+        pred_proba = float(model.predict_proba(data_scaled)[0, 1])  # 转换为Python float
+        
+        # Initialize SHAP TreeExplainer
         explainer = shap.TreeExplainer(model)
         
         # Calculate SHAP values
@@ -185,24 +188,28 @@ def create_shap_force_plot(model, data_scaled, data_original, drug_name):
         # Handle binary classification - get positive class (high risk)
         if isinstance(shap_values, list) and len(shap_values) == 2:
             # Binary classification: shap_values is a list [class_0, class_1]
-            expected_value = explainer.expected_value[1]  # Base value for positive class
+            expected_value = float(explainer.expected_value[1])  # 转换为Python float
             shap_values_positive = shap_values[1][0]  # SHAP values for positive class, first sample
         elif isinstance(shap_values, np.ndarray) and len(shap_values.shape) == 3:
             # Shape: (n_samples, n_features, n_classes)
-            expected_value = explainer.expected_value[1]
+            expected_value = float(explainer.expected_value[1])
             shap_values_positive = shap_values[0, :, 1]
         else:
             # Fallback for other formats
-            expected_value = explainer.expected_value
+            if isinstance(explainer.expected_value, np.ndarray):
+                expected_value = float(explainer.expected_value[0])
+            else:
+                expected_value = float(explainer.expected_value)
             shap_values_positive = shap_values[0]
         
         # Create force plot with HTML rendering
+        # 颜色方案: 红色(#ff0d57)表示推向高风险, 蓝色(#1e88e5)表示推向低风险
         force_plot = shap.force_plot(
             expected_value,
             shap_values_positive,
             data_original.iloc[0, :],
             matplotlib=False,
-            plot_cmap=["#1e88e5", "#ff0d57"]  # Blue for negative, Red for positive
+            plot_cmap=["#1e88e5", "#ff0d57"]  # [低风险颜色(蓝色), 高风险颜色(红色)]
         )
         
         # Save to temporary HTML file
@@ -222,9 +229,8 @@ def create_shap_force_plot(model, data_scaled, data_original, drug_name):
         except:
             pass
         
-        # Display prediction info
-        pred_proba = model.predict_proba(data_scaled)[0, 1]
-        st.info(f"**Base Value:** {expected_value:.4f} → **Predicted High Risk Probability:** {pred_proba:.4f}")
+        # Display prediction info - 使用预测概率而非转换后的值
+        st.info(f"**Base Probability (Expected Value):** {expected_value:.4f} → **Predicted High Risk Probability:** {pred_proba:.4f}")
         
         return True
         
@@ -436,9 +442,9 @@ def main():
                                 st.markdown("### 🔍 SHAP Force Plot Analysis")
                                 st.info("""
                                 **Understanding the SHAP Force Plot:**
-                                - **Base value**: Average model output across all samples
-                                - **Red features**: Push prediction towards HIGH risk (positive SHAP values)
-                                - **Blue features**: Push prediction towards LOW risk (negative SHAP values)
+                                - **Base Probability**: Average predicted probability across training samples
+                                - **🔴 Red features**: Push prediction towards **HIGH risk** (positive SHAP values)
+                                - **🔵 Blue features**: Push prediction towards **LOW risk** (negative SHAP values)
                                 - **Feature width**: Indicates the magnitude of impact on the prediction
                                 """)
                                 
