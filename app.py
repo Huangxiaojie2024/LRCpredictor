@@ -8,6 +8,8 @@ import joblib
 import warnings
 import shap
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')  # 重要：使用非交互式后端
 
 warnings.filterwarnings('ignore')
 
@@ -159,91 +161,88 @@ def load_model(model_path='gbdt_lactation_risk_pipeline.pkl'):
         return None
 
 
-# ============ Generate SHAP Force Plot ============
-def generate_shap_force_plot(descriptor_df, descriptor_std_df, pipeline, drug_name):
+# ============ SHAP Force Plot 绘制函数（根据你的本地代码改编）============
+def plot_shap_force_single_sample(
+    X_test_std,
+    X_test_original,
+    best_model,
+    drug_name
+):
     """
-    Generate SHAP Force Plot for a single sample
+    绘制单个测试样本的SHAP Force Plot（f(x)显示为预测概率）
     
-    Parameters:
-    -----------
-    descriptor_df : DataFrame
-        Original descriptor values
-    descriptor_std_df : DataFrame
-        Standardized descriptor values
-    pipeline : dict
-        Model pipeline containing model and scaler
-    drug_name : str
-        Name of the drug
-        
-    Returns:
-    --------
-    matplotlib figure
+    参数:
+    - X_test_std: 标准化后的测试集 (DataFrame) - 单个样本
+    - X_test_original: 原始测试集 (DataFrame) - 单个样本
+    - best_model: 训练好的模型
+    - drug_name: 药物名称
+    
+    返回:
+    - fig: matplotlib figure对象
     """
     
     try:
-        model = pipeline['model']
+        # 1. 计算SHAP值（概率空间）
+        # 使用当前样本作为背景数据（因为只有一个样本）
+        background_data = X_test_std.copy()
         
-        # Create background data for SHAP (sample from training data if available)
-        # Use the standardized test data as background
-        background_data = shap.sample(descriptor_std_df, min(100, len(descriptor_std_df)))
-        
-        # Initialize TreeExplainer with probability output
         explainer = shap.TreeExplainer(
-            model,
+            best_model, 
             data=background_data,
             feature_perturbation="interventional",
             model_output="probability"
         )
         
-        # Calculate SHAP values for this single sample
-        shap_values_proba = explainer.shap_values(descriptor_std_df)
+        shap_values_proba = explainer.shap_values(X_test_std)
         
-        # Handle different SHAP value formats (binary classification)
+        # 2. 处理SHAP值维度（二分类取正类）
         if isinstance(shap_values_proba, list):
             if len(shap_values_proba) == 2:
-                # Binary classification - use positive class (high risk)
-                shap_values_array = shap_values_proba[1]
+                shap_values_array = shap_values_proba[1]  # 二分类正类
             else:
                 shap_values_array = np.mean(shap_values_proba, axis=0)
         else:
             shap_values_array = shap_values_proba
         
-        # Get base value (expected value) for positive class
+        # 3. 获取基准值（expected_value）- 概率空间的基准值
         if isinstance(explainer.expected_value, (list, np.ndarray)):
             if len(explainer.expected_value) > 1:
-                base_value = explainer.expected_value[1]  # Positive class
+                base_value = explainer.expected_value[1]  # 二分类取正类
             else:
                 base_value = explainer.expected_value[0]
         else:
             base_value = explainer.expected_value
         
-        # Get SHAP values and original features for the sample
-        sample_shap = shap_values_array[0, :]
-        sample_original = descriptor_df.iloc[0, :].values
+        # 4. 获取样本数据（索引0，因为只有一个样本）
+        sample_idx = 0
+        sample_shap = shap_values_array[sample_idx, :]
+        sample_original = X_test_original.iloc[sample_idx, :]
         
-        # Round original values to 2 decimal places for display
-        sample_original_rounded = np.round(sample_original, 2)
+        # 5. 计算预测概率
+        pred_proba = best_model.predict_proba(X_test_std)[0, 1]  # 正类概率
         
-        # Calculate predicted probability
-        pred_proba = model.predict_proba(descriptor_std_df)[0, 1]
+        # 6. 将原始特征值保留2位小数
+        sample_original_rounded = np.round(sample_original.values, 2)
         
-        # Create matplotlib figure with larger size
-        plt.figure(figsize=(16, 4))
+        # 7. 创建matplotlib图形 - 关键修改点
+        fig = plt.figure(figsize=(20, 3), facecolor='white')
+        ax = fig.add_subplot(111)
         
-        # Generate force plot using matplotlib backend
+        # 8. 使用shap.force_plot绘制（matplotlib模式）
         shap.force_plot(
             base_value=base_value,
             shap_values=sample_shap,
             features=sample_original_rounded,
-            feature_names=descriptor_df.columns.tolist(),
+            feature_names=X_test_original.columns.tolist(),
             matplotlib=True,
-            show=False
+            show=False,
+            figsize=(20, 3)
         )
         
-        # Add title with prediction information
+        # 9. 添加标题
         plt.title(
             f'SHAP Force Plot - {drug_name}\n'
-            f'Base Probability: {base_value:.4f} → Predicted High Risk Probability: {pred_proba:.4f}',
+            f'Base Value: {base_value:.4f} → Predicted Probability: {pred_proba:.4f}',
             fontsize=14,
             fontweight='bold',
             pad=20
@@ -251,13 +250,10 @@ def generate_shap_force_plot(descriptor_df, descriptor_std_df, pipeline, drug_na
         
         plt.tight_layout()
         
-        # Get current figure
-        fig = plt.gcf()
-        
         return fig
         
     except Exception as e:
-        st.error(f"Error generating SHAP plot: {str(e)}")
+        st.error(f"❌ Error generating SHAP plot: {str(e)}")
         import traceback
         st.error(traceback.format_exc())
         return None
@@ -464,22 +460,28 @@ def main():
                                 st.markdown("### 🔍 SHAP Force Plot Analysis")
                                 st.info("""
                                 **Understanding the SHAP Force Plot:**
-                                - **Base value**: Average prediction across all samples
+                                - **Base value**: Average prediction probability across all samples
                                 - **Red features**: Push prediction towards HIGH risk (positive SHAP values)
                                 - **Blue features**: Push prediction towards LOW risk (negative SHAP values)
-                                - **Feature width**: Indicates the magnitude of impact
+                                - **Feature width**: Indicates the magnitude of impact on the prediction
                                 """)
                                 
                                 with st.spinner("Generating SHAP force plot..."):
-                                    shap_fig = generate_shap_force_plot(
-                                        descriptor_df,
-                                        descriptor_std_df,
-                                        pipeline,
-                                        drug_name
+                                    # 获取模型
+                                    model = pipeline['model']
+                                    
+                                    # 调用SHAP绘图函数
+                                    shap_fig = plot_shap_force_single_sample(
+                                        X_test_std=descriptor_std_df,
+                                        X_test_original=descriptor_df,
+                                        best_model=model,
+                                        drug_name=drug_name
                                     )
                                     
                                     if shap_fig is not None:
+                                        # 显示图形
                                         st.pyplot(shap_fig, use_container_width=True)
+                                        # 关闭图形以释放内存
                                         plt.close(shap_fig)
                                     else:
                                         st.warning("⚠️ Unable to generate SHAP plot. Please check your data.")
@@ -557,11 +559,11 @@ def main():
                             
                             try:
                                 # Calculate descriptors
-                                descriptor_df = calculate_all_descriptors(smiles, drug_name_batch)
+                                descriptor_df_batch = calculate_all_descriptors(smiles, drug_name_batch)
                                 
-                                if descriptor_df is not None:
+                                if descriptor_df_batch is not None:
                                     # Predict
-                                    result, _ = predict_risk(descriptor_df, pipeline)
+                                    result, _ = predict_risk(descriptor_df_batch, pipeline)
                                     if result is not None:
                                         all_results.append(result)
                                     else:
