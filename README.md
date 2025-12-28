@@ -51,6 +51,7 @@ Each dataset contains:
 LRCpredictor/
 │
 ├── DataSet/                           # Molecular descriptors and training data
+│   ├── LRC_dataset.sdf                # Original molecular structure file
 │   ├── LRC_Training_Set.xlsx          # Training dataset (n=313)
 │   ├── LRC_Test_Set.xlsx              # Test dataset (n=79)
 │   ├── RDKit.csv                      # RDKit descriptors
