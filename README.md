@@ -66,11 +66,13 @@ LRCpredictor/
 │   ├── RDKit descriptor calculation
 │   ├── Mordred descriptor calculation
 │   └── MACCS keys fingerprint generation
-│
-├── LRCpredictor.ipynb                 # Complete workflow notebook
-│   ├── Feature preprocessing
-│   ├── Feature selection (GA, RFECV, MI, ETB)
-│   └── Model development (RF, GBDT, AdaBoost, LightGBM, XGBoost)
+├── LRCpredictor_code/                          # Model development code and datasets
+│   ├── LRCpredictor.ipynb                      # Complete workflow notebook
+│   │   ├── Feature preprocessing
+│   │   ├── Feature selection (GA, RFECV, MI, ETB)
+│   │   └── Model development (RF, GBDT, AdaBoost, LightGBM, XGBoost)
+│   ├── TrainingSet_LRC_Mordred+RDKit_MACCS.csv # Training data with selected features
+│   └── TestSet_LRC_Mordred+RDKit_MACCS.csv     # Test data with selected features
 │
 ├── app.py                             # Streamlit web application
 ├── gbdt_lactation_risk_pipeline.pkl   # Trained GBDT model with scaler
