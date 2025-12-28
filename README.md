@@ -48,16 +48,33 @@ Each dataset contains:
 
 ## 🔧 Repository Structure
 ```
-├── LRC_Training Set.xlsx              # Training dataset (n=313)
-├── LRC_Test Set.xlsx                  # Test dataset (n=79)
+LRCpredictor/
+│
+├── DataSet/                           # Molecular descriptors and training data
+│   ├── LRC_Training_Set.xlsx          # Training dataset (n=313)
+│   ├── LRC_Test_Set.xlsx              # Test dataset (n=79)
+│   ├── RDKit.csv                      # RDKit descriptors
+│   ├── Mordred.csv                    # Mordred descriptors
+│   ├── MACCS.csv                      # MACCS keys fingerprints
+│   ├── RDKit+MACCS.csv                # Combined RDKit and MACCS features
+│   ├── Mordred+MACCS.csv              # Combined Mordred and MACCS features
+│   ├── Mordred+RDKit.csv              # Combined Mordred and RDKit features
+│   └── Mordred+RDKit+MACCS.csv        # All three descriptor types combined
+│
+├── molecular_descriptor_calculator.py  # Script for calculating molecular descriptors
+│   ├── RDKit descriptor calculation
+│   ├── Mordred descriptor calculation
+│   └── MACCS keys fingerprint generation
+│
 ├── LRCpredictor.ipynb                 # Complete workflow notebook
 │   ├── Feature preprocessing
 │   ├── Feature selection (GA, RFECV, MI, ETB)
-│   ├── Model development (RF, GBDT, AdaBoost, LightGBM, XGBoost)
-├── app.py                             # Streamlit web application code
+│   └── Model development (RF, GBDT, AdaBoost, LightGBM, XGBoost)
+│
+├── app.py                             # Streamlit web application
 ├── gbdt_lactation_risk_pipeline.pkl   # Trained GBDT model with scaler
 ├── requirements.txt                   # Python package dependencies
-└── README.md                          # This file
+└── README.md                          # Project documentation
 ```
 
 ## 💻 Installation & Usage
