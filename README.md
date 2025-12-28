@@ -6,7 +6,7 @@
 
 LRCpredictor is a novel interpretable machine learning framework for predicting clinically actionable lactation risk categories of drugs based on Dr. Thomas Hale's evidence-based Lactation Risk Categories (LRC) system. Unlike existing computational models that focus on pharmacokinetic surrogate endpoints (milk-to-plasma ratios), LRCpredictor directly predicts composite risk classifications to support therapeutic decision-making for breastfeeding medication safety.
 
-![Graphical Abstract](graphical_.png)
+![Graphical Abstract](graphical_abstract.png)
 *Schematic workflow of the LRCpredictor framework for lactation risk prediction.*
 
 ## 🌟 Key Features
