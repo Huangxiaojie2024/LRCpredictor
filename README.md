@@ -80,9 +80,12 @@ LRCpredictor/
 │
 │
 ├── LRCpredictor_Demo
-├── README.md                              # This file
-├── LRCpredictor_Demo.py                   # Demonstration script (Python)
-├── gbdt_lactation_risk_pipeline.pkl       # Trained GBDT model
+│   ├── README.md                             
+│   ├── LRCpredictor_Demo.py                   # Demonstration script (Python)
+│   ├── gbdt_lactation_risk_pipeline.pkl       # Trained GBDT model
+│
+│
+│
 ├── app.py                             # Streamlit web application
 ├── gbdt_lactation_risk_pipeline.pkl   # Trained GBDT model with scaler
 ├── requirements.txt                   # Python package dependencies
