@@ -12,10 +12,7 @@
 ## Key Features
 
 - **Direct Clinical Prediction**: Classifies drugs into Low Risk (L1/L2) vs. High Risk (L4/L5) categories
-- **Comprehensive Molecular Characterization**: 35 optimized descriptors from Mordred, RDKit, and MACCS
-- **High Performance**: AUC = 0.8105, Accuracy = 74.68% on independent test set
 - **Model Interpretability**: SHAP-based explanations identify molecular determinants of lactation risk
-- **Structural Alerts**: 18 identified substructures associated with elevated risk
 - **User-Friendly Web Platform**: https://lrcpredictor.streamlit.app/
 
 ---
