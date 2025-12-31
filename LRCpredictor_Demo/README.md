@@ -129,7 +129,6 @@ Access the online prediction tool at: **https://lrcpredictor.streamlit.app/**
 
 ---
 
-**Last Updated**: December 2024  
-**Version**: 1.0.0
+**Last Updated**: December 2025  
 
 For the latest updates, visit: https://github.com/Huangxiaojie2024/LRCpredictor
