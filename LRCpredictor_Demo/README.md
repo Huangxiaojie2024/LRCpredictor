@@ -1,4 +1,4 @@
-# LRCpredictor
+# LRCpredictor_Demo
 
 [![Web App](https://img.shields.io/badge/Web-Streamlit-red.svg)](https://lrcpredictor.streamlit.app/)
 
