@@ -2,49 +2,6 @@
 LRCpredictor
 ==============================================================================
 
-Supplementary Code for Manuscript:
-"Machine Learning-Based Prediction of Drug Lactation Risk: Bridging Molecular 
-Features and Breastfeeding Safety"
-
-Authors: Peineng Liu, Shaokai Huang, Xiaochun Xie, Jiajia Chen, Shanshan Wu, 
-         Lina Huang, Xiaojie Huang*
-Affiliation: Department of Pharmacy, Jieyang People's Hospital, Jieyang, China
-Correspondence: huangxj46@alumni.sysu.edu.cn
-
-This demonstration script illustrates the usage of the trained LRCpredictor 
-model for predicting lactation risk categories of drugs from their molecular 
-SMILES structures.
-
-Model Information:
-------------------
-- Algorithm: Gradient Boosting Decision Tree (GBDT)
-- Features: 35 molecular descriptors (Mordred + RDKit + MACCS)
-- Feature Selection: Embedded Tree-based (ETB) method
-- Training Set: 314 drugs (L1/L2: 169, L4/L5: 145)
-- Test Set: 78 drugs (L1/L2: 42, L4/L5: 36)
-- Performance: AUC = 0.8105, ACC = 0.7468, SEN = 0.7222, SPE = 0.7619
-
-Input:
-------
-SMILES (Simplified Molecular Input Line Entry System) notation
-
-Output:
--------
-- Binary classification: Low Risk (L1/L2) or High Risk (L4/L5)
-- Probability scores for both risk categories
-- SHAP force plot for model interpretation
-
-Web Platform:
--------------
-https://lrcpredictor.streamlit.app/
-
-GitHub Repository:
-------------------
-https://github.com/Huangxiaojie2024/LRCpredictor
-
-==============================================================================
-"""
-
 # Import required libraries
 import pandas as pd
 import numpy as np
@@ -73,21 +30,7 @@ def calculate_molecular_descriptors(smiles, drug_name="Unknown"):
     
     This function computes a comprehensive set of molecular descriptors that 
     encode physicochemical properties, electronic characteristics, topological 
-    indices, and structural patterns. The descriptors were selected through 
-    systematic feature selection (Embedded Tree-based method) from over 2000 
-    initial features.
-    
-    Feature Categories:
-    -------------------
-    1. Mordred 2D descriptors: Topological indices (ABC, SpMax_A, etc.), 
-       autocorrelation descriptors (AATS, ATSC, GATS), BCUT descriptors
-    2. RDKit descriptors: Physicochemical properties (VSA_EState, qed), 
-       topological descriptors (IC1, MIC1, JGI3), connectivity indices
-    
-    The 35 selected features represent the optimal balance between model 
-    performance and interpretability as identified in our study.
-    
-    Parameters
+    indices, and structural patterns. 
     ----------
     smiles : str
         SMILES notation of the drug molecule
@@ -183,14 +126,6 @@ def load_trained_model(model_path='gbdt_lactation_risk_pipeline.pkl'):
     - Trained GBDT classifier (optimized via Bayesian optimization)
     - StandardScaler for feature normalization
     - Feature names (35 descriptors)
-    
-    Model Performance Metrics (Test Set):
-    --------------------------------------
-    - AUC: 0.8105
-    - Accuracy: 0.7468
-    - Sensitivity: 0.7222
-    - Specificity: 0.7619
-    - MCC: 0.4516
     
     Parameters
     ----------
