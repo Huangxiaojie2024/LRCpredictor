@@ -1,8 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
 ==============================================================================
-LRCpredictor: Lactation Risk Classification Predictor
+LRCpredictor
 ==============================================================================
 
 Supplementary Code for Manuscript:
