@@ -12,10 +12,10 @@ LRCpredictor is a novel interpretable machine learning framework for predicting 
 ## 🌟 Key Features
 
 - **Clinically Actionable Predictions**: Direct classification of drugs into low-risk (L1/L2) vs. high-risk (L4/L5) categories
-- **High Performance**: Test set AUC of 0.8105 and MCC of 0.4926; exceptional performance for extreme categories (L1 vs L5: AUC = 0.9000, MCC = 0.7031)
+- **High Performance**: Cross-validated performance (AUC=0.80, MCC=0.52); exceptional performance for extreme categories (L1 vs L5: AUC = 0.85, MCC = 0.62)
 - **Interpretable Framework**: Integrated SHAP analysis reveals molecular determinants driving lactation risk predictions
 - **Web-Based Platform**: Freely accessible online tool with real-time SHAP visualization
-- **Comprehensive Dataset**: 392 drugs with documented lactation risk classifications from the latest 2025-2026 LRC system
+- **Comprehensive Dataset**: 391 drugs with documented lactation risk classifications from the latest 2025-2026 LRC system
 
 ## 🚀 Online Prediction Platform
 
@@ -34,12 +34,12 @@ The dataset includes 392 carefully curated compounds with documented lactation r
 | Dataset | High-risk (L4/L5) | Low-risk (L1/L2) | Total |
 |---------|-------------------|------------------|-------|
 | Training Set | 150 | 163 | 313 |
-| Test Set | 31 | 48 | 79 |
-| **Total** | **181** | **211** | **392** |
+| Test Set | 29 | 49 | 78 |
+| **Total** | **179** | **212** | **391** |
 
 ### Files:
 - `LRC_Training Set.xlsx` - Training set with 313 compounds
-- `LRC_Test Set.xlsx` - Test set with 79 compounds
+- `LRC_Test Set.xlsx` - Test set with 78 compounds
 
 Each dataset contains:
 - Drug names and SMILES structures
@@ -125,21 +125,6 @@ streamlit run app.py
 
 The application will open in your browser at `http://localhost:8501`
 
-## 🧪 Model Performance
-
-### Overall Performance (L1/L2 vs L4/L5)
-- **Test Set AUC**: 0.8105
-- **Test Set MCC**: 0.4926
-- **Accuracy**: 74.68%
-- **Sensitivity**: 77.42%
-- **Specificity**: 72.92%
-
-### Extreme Categories Performance (L1 vs L5)
-- **Test Set AUC**: 0.9000
-- **Test Set MCC**: 0.7031
-- **Accuracy**: 85.19%
-- **Sensitivity**: 82.35%
-- **Specificity**: 90.00%
 
 ## 🔬 Methodology
 
